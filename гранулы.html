@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Контроль качества сушки</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#0f1216; --panel:#171b22; --panel2:#1e242d; --border:#2a3140;
+  --text:#e6ebf2; --muted:#8a93a6;
+  --accent:#4ade80; --accent2:#38bdf8; --danger:#f87171; --warn:#fbbf24;
+}
+*{box-sizing:border-box}
+body{margin:0;padding:24px;background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:14px}
+.container{max-width:1400px;margin:0 auto}
+h1{font-size:20px;margin:0 0 4px}
+h1 small{color:var(--muted);font-weight:400;font-size:13px}
+.subtitle{color:var(--muted);margin:0 0 20px;font-size:13px;line-height:1.5}
+.grid{display:grid;grid-template-columns:340px 1fr;gap:16px}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px}
+.card h2{font-size:12px;margin:0 0 12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+.drop{border:2px dashed var(--border);border-radius:8px;padding:20px;text-align:center;
+  color:var(--muted);cursor:pointer;transition:.2s;display:block}
+.drop:hover,.drop.drag{border-color:var(--accent);color:var(--accent)}
+.drop input{display:none}
+.ctrl{margin-bottom:14px}
+.ctrl label{display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px}
+.ctrl label span{color:var(--accent);font-weight:600}
+.ctrl .help{color:var(--muted);font-size:11px;margin-top:5px;line-height:1.45}
+input[type=range]{width:100%;-webkit-appearance:none;height:4px;
+  background:var(--panel2);border-radius:2px;outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;
+  background:var(--accent);border-radius:50%;cursor:pointer}
+input[type=range]::-moz-range-thumb{width:16px;height:16px;background:var(--accent);
+  border-radius:50%;cursor:pointer;border:none}
+.buttons{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+button{padding:8px 14px;border:1px solid var(--border);background:var(--panel2);color:var(--text);
+  border-radius:6px;cursor:pointer;font-size:13px;transition:.15s;font-family:inherit}
+button:hover{border-color:var(--accent);color:var(--accent)}
+button.primary{background:var(--accent);color:#0f1216;border-color:var(--accent);font-weight:600}
+button.primary:hover{background:#22c55e;color:#0f1216}
+.canvases{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.canvases .box{background:var(--panel2);border-radius:8px;padding:8px}
+.canvases .box h3{margin:0 0 6px;font-size:12px;color:var(--muted);font-weight:500}
+canvas{max-width:100%;display:block;border-radius:4px}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.metric{background:var(--panel2);border-radius:8px;padding:12px}
+.metric .label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.metric .value{font-size:22px;font-weight:700;margin-top:4px;transition:.2s}
+.metric .hint{font-size:11px;color:var(--muted);margin-top:2px}
+.metric.ok .value{color:var(--accent)}
+.metric.warn .value{color:var(--warn)}
+.metric.bad .value{color:var(--danger)}
+.charts{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:700px){.charts{grid-template-columns:1fr}}
+.chart-box{background:var(--panel2);border-radius:8px;padding:12px}
+.chart-box h3{margin:0 0 8px;font-size:12px;color:var(--muted);font-weight:500}
+.chart-box canvas{height:160px !important}
+.verdict{padding:14px 16px;border-radius:8px;font-weight:600;display:flex;
+  justify-content:space-between;align-items:center;gap:12px;font-size:14px}
+.verdict.ok{background:rgba(74,222,128,.1);border:1px solid var(--accent);color:var(--accent)}
+.verdict.bad{background:rgba(248,113,113,.1);border:1px solid var(--danger);color:var(--danger)}
+.verdict.warn{background:rgba(251,191,36,.1);border:1px solid var(--warn);color:var(--warn)}
+.verdict .side{font-size:12px;font-weight:400;color:var(--muted)}
+.protocol{font-family:"SF Mono",Consolas,monospace;font-size:12px;color:var(--muted);line-height:1.7;white-space:pre-wrap}
+.protocol b{color:var(--text)}
+.note{background:rgba(56,189,248,.08);border-left:3px solid var(--accent2);padding:12px 14px;
+  border-radius:4px;font-size:12px;color:var(--muted);margin-top:12px;line-height:1.6}
+.note b{color:var(--accent2)}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Контроль качества сушки белка <small></small></h1>
+  <p class="subtitle"></p>
+
+  <div class="grid">
+    <div>
+      <div class="card">
+        <h2>Изображение</h2>
+        <label class="drop" id="dropZone">
+          <input type="file" id="fileInput" accept="image/*">
+          <div id="dropText">Перетащите файл или нажмите для выбора</div>
+        </label>
+      </div>
+
+      <div class="card">
+        <h2>Параметры</h2>
+        <div class="ctrl">
+          <label>Порог сегментации <span id="v-threshold">128</span></label>
+          <input type="range" id="threshold" min="0" max="255" value="128">
+          <div class="help">Ярче порога — гранула продукта; темнее — фон или тёмное включение. Основной ползунок: двигая его, вы двигаете границу «брак/норма».</div>
+        </div>
+        <div class="ctrl">
+          <label>Контраст <span id="v-contrast">100%</span></label>
+          <input type="range" id="contrast" min="20" max="200" value="100">
+          <div class="help">Нормализация перед анализом. Для слабоконтрастных кадров с камеры на ленте.</div>
+        </div>
+        <div class="ctrl">
+          <label>Яркость <span id="v-brightness">0</span></label>
+          <input type="range" id="brightness" min="-100" max="100" value="0">
+          <div class="help">Сдвиг яркости. Влияет только на сегментацию, геометрию не трогает.</div>
+        </div>
+        <div class="ctrl">
+          <label>Мин. размер гранулы <span id="v-minsize">4 px</span></label>
+          <input type="range" id="minsize" min="1" max="20" value="4">
+          <div class="help">Гранулы меньше этого размера отбрасываются как шум камеры / пыль.</div>
+        </div>
+        <div class="ctrl">
+          <label>Допуск отклонения <span id="v-tolerance">25%</span></label>
+          <input type="range" id="tolerance" min="5" max="50" value="25">
+          <div class="help">Технологический допуск для решения PASS/FAIL: по неоднородности размеров и по доле тёмных включений.</div>
+        </div>
+        <div class="buttons">
+          <button class="primary" id="btnAnalyze">Анализ</button>
+          <button id="btnReset">Сброс</button>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <div class="canvases">
+          <div class="box">
+            <h3>Исходное изображение</h3>
+            <canvas id="originalCanvas"></canvas>
+          </div>
+          <div class="box">
+            <h3>Сегментация + найденные гранулы</h3>
+            <canvas id="processedCanvas"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Метрики</h2>
+        <div class="metrics">
+          <div class="metric" id="m-coverage"><div class="label">Покрытие</div><div class="value">—</div><div class="hint">% светлых пикселей</div></div>
+          <div class="metric" id="m-count"><div class="label">Гранул</div><div class="value">—</div><div class="hint">связных компонент</div></div>
+          <div class="metric" id="m-size"><div class="label">Ср. размер</div><div class="value">—</div><div class="hint">эквив. диаметр, px</div></div>
+          <div class="metric" id="m-cv"><div class="label">Неоднородность</div><div class="value">—</div><div class="hint">CV размера, %</div></div>
+          <div class="metric" id="m-dark"><div class="label">Тёмные включ.</div><div class="value">—</div><div class="hint">% тёмных пикселей</div></div>
+          <div class="metric" id="m-hue"><div class="label">Ср. оттенок</div><div class="value">—</div><div class="hint">HSV, градусы</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Распределения</h2>
+        <div class="charts">
+          <div class="chart-box">
+            <h3>Гистограмма яркости (32 бина)</h3>
+            <canvas id="chartHist"></canvas>
+          </div>
+          <div class="chart-box">
+            <h3>Распределение размеров гранул</h3>
+            <canvas id="chartSizes"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Решение</h2>
+        <div class="verdict" id="verdict">Ожидание изображения…</div>
+      </div>
+
+      <div class="card">
+        <h2>Протокол</h2>
+        <div class="protocol" id="protocol">—</div>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* ---------- Глобальное состояние ---------- */
+let originalImage = null;
+let chartHist = null, chartSizes = null;
+
+/* ---------- Chart.js ---------- */
+function initCharts() {
+  const opts = {
+    responsive: true, maintainAspectRatio: false, animation: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { ticks: { color:'#8a93a6', font:{size:9}, maxRotation:0, autoSkip:true, maxTicksLimit:8 },
+           grid: { display:false } },
+      y: { ticks: { color:'#8a93a6', font:{size:9} }, grid: { color:'#2a3140' }, beginAtZero:true }
+    }
+  };
+  chartHist = new Chart(document.getElementById('chartHist').getContext('2d'), {
+    type:'bar',
+    data:{ labels:[], datasets:[{ data:[], backgroundColor:'rgba(56,189,248,.55)',
+      borderColor:'rgba(56,189,248,1)', borderWidth:1 }] },
+    options: JSON.parse(JSON.stringify(opts))
+  });
+  chartSizes = new Chart(document.getElementById('chartSizes').getContext('2d'), {
+    type:'bar',
+    data:{ labels:[], datasets:[{ data:[], backgroundColor:'rgba(74,222,128,.55)',
+      borderColor:'rgba(74,222,128,1)', borderWidth:1 }] },
+    options: JSON.parse(JSON.stringify(opts))
+  });
+}
+
+/* ---------- Анализ кадра (без ИИ) ---------- */
+function analyze(img, threshold, minSize) {
+  const W = img.width, H = img.height, d = img.data;
+  const n = W * H;
+  const mask = new Uint8Array(n);
+  const vArr = new Float32Array(n);
+  const hist = new Array(32).fill(0);
+
+  let sumS = 0, sumV = 0, sumHx = 0, sumHy = 0;
+
+  for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+    const r = d[i], g = d[i+1], b = d[i+2];
+    const v = Math.max(r, g, b);
+    const mn = Math.min(r, g, b);
+    vArr[p] = v;
+    hist[Math.min(31, v >> 3)]++;
+    if (v >= threshold) mask[p] = 1;
+
+    if (v > 0) {
+      const s = (v - mn) / v;
+      let hr = 0;
+      if (v !== mn) {
+        if (v === r)      hr = (g - b) / (v - mn);
+        else if (v === g) hr = (b - r) / (v - mn) + 2;
+        else              hr = (r - g) / (v - mn) + 4;
+        if (hr < 0) hr += 6;
+      }
+      const hRad = hr * Math.PI / 3;   // 60° в радианах
+      sumHx += Math.cos(hRad);
+      sumHy += Math.sin(hRad);
+      sumS  += s;
+    }
+    sumV += v / 255;
+  }
+
+  const meanHue  = (Math.atan2(sumHy, sumHx) * 180 / Math.PI + 360) % 360;
+  const meanSat  = sumS / n;
+  const meanVal  = sumV / n;
+  const Rc       = Math.sqrt(sumHx*sumHx + sumHy*sumHy) / n;
+  const circStdHue = Math.sqrt(-2 * Math.log(Math.max(Rc, 1e-6))) * 180 / Math.PI;
+
+  /* Связные компоненты (BFS, 4-связность) */
+  const minArea = Math.max(1, minSize * minSize);
+  const visited = new Uint8Array(n);
+  const components = [];
+  let maskCount = 0;
+  for (let p = 0; p < n; p++) if (mask[p]) maskCount++;
+
+  for (let p = 0; p < n; p++) {
+    if (!mask[p] || visited[p]) continue;
+    const stack = [p];
+    visited[p] = 1;
+    let count = 0;
+    let minX = p % W, maxX = p % W, minY = (p/W)|0, maxY = (p/W)|0;
+    while (stack.length) {
+      const q = stack.pop();
+      count++;
+      const qx = q % W, qy = (q / W) | 0;
+      if (qx < minX) minX = qx;
+      if (qx > maxX) maxX = qx;
+      if (qy < minY) minY = qy;
+      if (qy > maxY) maxY = qy;
+      if (qx > 0   && mask[q-1] && !visited[q-1]) { visited[q-1]=1; stack.push(q-1); }
+      if (qx < W-1 && mask[q+1] && !visited[q+1]) { visited[q+1]=1; stack.push(q+1); }
+      if (qy > 0   && mask[q-W] && !visited[q-W]) { visited[q-W]=1; stack.push(q-W); }
+      if (qy < H-1 && mask[q+W] && !visited[q+W]) { visited[q+W]=1; stack.push(q+W); }
+    }
+    if (count >= minArea) {
+      components.push({
+        count,
+        dEq: 2 * Math.sqrt(count / Math.PI),
+        cx: (minX + maxX) / 2,
+        cy: (minY + maxY) / 2
+      });
+    }
+  }
+
+  /* Статистика размеров */
+  const sizes = components.map(c => c.dEq);
+  const meanSize = sizes.length ? sizes.reduce((a,b)=>a+b, 0) / sizes.length : 0;
+  const stdSize  = sizes.length
+    ? Math.sqrt(sizes.reduce((a,b)=>a + (b-meanSize)**2, 0) / sizes.length) : 0;
+  const cv = meanSize > 0 ? stdSize / meanSize : 0;
+
+  /* Тёмные включения: пиксели вне маски, яркость ниже 60% порога */
+  const darkCut = threshold * 0.6;
+  let darkCount = 0;
+  for (let p = 0; p < n; p++) if (!mask[p] && vArr[p] < darkCut) darkCount++;
+  const darkPct = 100 * darkCount / n;
+  const coverage = 100 * maskCount / n;
+
+  return { hist, components, meanHue, meanSat, meanVal, circStdHue,
+           meanSize, stdSize, cv, darkPct, coverage, W, H };
+}
+
+/* ---------- Основной пайплайн ---------- */
+function processImage() {
+  if (!originalImage) return;
+  const canvas = document.getElementById('processedCanvas');
+  const ctx = canvas.getContext('2d');
+  const threshold = +document.getElementById('threshold').value;
+  const contrast  = +document.getElementById('contrast').value / 100;
+  const brightness = +document.getElementById('brightness').value;
+  const minSize   = +document.getElementById('minsize').value;
+  const tolerance = +document.getElementById('tolerance').value;
+
+  ctx.drawImage(originalImage, 0, 0, canvas.width, canvas.height);
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const d = img.data;
+
+  /* Препроцессинг: контраст вокруг 128 + сдвиг яркости */
+  for (let i = 0; i < d.length; i += 4) {
+    d[i]   = Math.min(255, Math.max(0, (d[i]   - 128) * contrast + 128 + brightness));
+    d[i+1] = Math.min(255, Math.max(0, (d[i+1] - 128) * contrast + 128 + brightness));
+    d[i+2] = Math.min(255, Math.max(0, (d[i+2] - 128) * contrast + 128 + brightness));
+  }
+
+  const a = analyze(img, threshold, minSize);
+
+  /* Визуализация: фон приглушён, гранулы подсвечены, поверх — окружности */
+  const out = new ImageData(new Uint8ClampedArray(d), canvas.width, canvas.height);
+  const od = out.data;
+  for (let i = 0; i < od.length; i += 4) {
+    const v = Math.max(od[i], od[i+1], od[i+2]);
+    if (v < threshold) {
+      od[i]   = Math.floor(od[i]   * 0.15);
+      od[i+1] = Math.floor(od[i+1] * 0.15);
+      od[i+2] = Math.floor(od[i+2] * 0.15);
+    }
+  }
+  ctx.putImageData(out, 0, 0);
+
+  const sorted = [...a.components].sort((x, y) => y.count - x.count).slice(0, 800);
+  ctx.strokeStyle = 'rgba(74,222,128,.85)';
+  ctx.lineWidth = 1.5;
+  for (const c of sorted) {
+    ctx.beginPath();
+    ctx.arc(c.cx, c.cy, c.dEq / 2, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  updateMetrics(a, tolerance);
+  updateCharts(a);
+  updateVerdict(a, tolerance);
+  updateProtocol(a, tolerance, { threshold, contrast, brightness, minSize });
+}
+
+/* ---------- UI-обновление ---------- */
+function setMetric(id, value, hint, state) {
+  const el = document.getElementById(id);
+  el.querySelector('.value').textContent = value;
+  if (hint !== undefined) el.querySelector('.hint').textContent = hint;
+  el.classList.remove('ok','warn','bad');
+  if (state) el.classList.add(state);
+}
+
+function updateMetrics(a, tol) {
+  const cvPct = a.cv * 100;
+  setMetric('m-coverage', a.coverage.toFixed(1) + '%', '% светлых пикселей',
+            a.coverage > 5 ? 'ok' : 'warn');
+  setMetric('m-count', a.components.length, 'связных компонент',
+            a.components.length > 0 ? 'ok' : 'bad');
+  setMetric('m-size', a.meanSize.toFixed(1), 'эквив. диаметр, px', '');
+  setMetric('m-cv', cvPct.toFixed(1) + '%', 'CV размера, %',
+            cvPct <= tol ? 'ok' : cvPct <= tol*1.5 ? 'warn' : 'bad');
+  setMetric('m-dark', a.darkPct.toFixed(1) + '%', '% тёмных пикселей',
+            a.darkPct <= tol ? 'ok' : a.darkPct <= tol*1.5 ? 'warn' : 'bad');
+  setMetric('m-hue', a.meanHue.toFixed(0) + '°', 'HSV, градусы', '');
+}
+
+function updateCharts(a) {
+  if (!chartHist || !chartSizes) return;
+
+  chartHist.data.labels = Array.from({length: 32}, (_, i) => i * 8);
+  chartHist.data.datasets[0].data = a.hist;
+  chartHist.update('none');
+
+  const bins = 10;
+  const maxSize = Math.max(...a.components.map(c => c.dEq), 1);
+  const binSize = maxSize / bins;
+  const sizeHist = new Array(bins).fill(0);
+  for (const c of a.components) {
+    sizeHist[Math.min(bins-1, Math.floor(c.dEq / binSize))]++;
+  }
+  chartSizes.data.labels = Array.from({length: bins},
+    (_, i) => `${(i*binSize).toFixed(0)}–${((i+1)*binSize).toFixed(0)}`);
+  chartSizes.data.datasets[0].data = sizeHist;
+  chartSizes.update('none');
+}
+
+function updateVerdict(a, tol) {
+  const el = document.getElementById('verdict');
+  const cvPct = a.cv * 100;
+  const problems = [];
+  if (a.components.length === 0) problems.push('гранулы не обнаружены');
+  if (cvPct > tol)          problems.push(`неоднородность размера ${cvPct.toFixed(1)}%`);
+  if (a.darkPct > tol)      problems.push(`тёмные включения ${a.darkPct.toFixed(1)}%`);
+
+  el.classList.remove('ok','warn','bad');
+  if (problems.length === 0) {
+    el.classList.add('ok');
+    el.innerHTML = `<span>✓ PASS — параметры в допуске</span><span class="side">допуск ${tol}%</span>`;
+  } else if (problems.length === 1) {
+    el.classList.add('warn');
+    el.innerHTML = `<span>⚠ ВНИМАНИЕ — ${problems[0]}</span><span class="side">допуск ${tol}%</span>`;
+  } else {
+    el.classList.add('bad');
+    el.innerHTML = `<span>✗ FAIL — ${problems.join('; ')}</span><span class="side">допуск ${tol}%</span>`;
+  }
+}
+
+function updateProtocol(a, tol, params) {
+  const now = new Date();
+  const cvPct = a.cv * 100;
+  const verdict = (cvPct <= tol && a.darkPct <= tol && a.components.length > 0) ? 'PASS' : 'FAIL';
+  document.getElementById('protocol').innerHTML =
+`<b>${now.toLocaleDateString()} ${now.toLocaleTimeString()}</b>
+Порог сегм.: ${params.threshold} | Контраст: ${(params.contrast*100).toFixed(0)}% | Яркость: ${params.brightness}
+Мин. размер гранулы: ${params.minSize} px | Допуск: ${tol}%
+---
+Покрытие:          ${a.coverage.toFixed(2)}%
+Гранул найдено:    ${a.components.length}
+Ср. диаметр:       ${a.meanSize.toFixed(2)} px  (σ = ${a.stdSize.toFixed(2)})
+Неоднородность:    ${cvPct.toFixed(2)}%  (CV)
+Тёмные включения:  ${a.darkPct.toFixed(2)}%
+Ср. оттенок HSV:   ${a.meanHue.toFixed(1)}°  (станд. откл. ${a.circStdHue.toFixed(1)}°)
+Ср. насыщенность:  ${(a.meanSat*100).toFixed(1)}%   Ср. яркость: ${(a.meanVal*100).toFixed(1)}%
+---
+<b>Решение: ${verdict}</b>`;
+}
+
+/* ---------- Загрузка изображения ---------- */
+function loadFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    originalImage = new Image();
+    originalImage.onload = () => {
+      const oc = document.getElementById('originalCanvas');
+      const pc = document.getElementById('processedCanvas');
+      [oc, pc].forEach(c => { c.width = originalImage.width; c.height = originalImage.height; });
+      oc.getContext('2d').drawImage(originalImage, 0, 0);
+      processImage();
+    };
+    originalImage.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+/* ---------- Инициализация ---------- */
+document.addEventListener('DOMContentLoaded', () => {
+  initCharts();
+
+  const fileInput = document.getElementById('fileInput');
+  const dropZone  = document.getElementById('dropZone');
+  fileInput.addEventListener('change', e => loadFile(e.target.files[0]));
+
+  ['dragover','dragenter'].forEach(ev =>
+    dropZone.addEventListener(ev, e => { e.preventDefault(); dropZone.classList.add('drag'); }));
+  ['dragleave','drop'].forEach(ev =>
+    dropZone.addEventListener(ev, e => { e.preventDefault(); dropZone.classList.remove('drag'); }));
+  dropZone.addEventListener('drop', e => {
+    if (e.dataTransfer.files.length) loadFile(e.dataTransfer.files[0]);
+  });
+
+  /* Ползунки: обновляют подпись и пересчитывают анализ */
+  const bindings = [
+    ['threshold', v => v],
+    ['contrast',  v => v + '%'],
+    ['brightness', v => (v > 0 ? '+' : '') + v],
+    ['minsize',   v => v + ' px'],
+    ['tolerance', v => v + '%']
+  ];
+  bindings.forEach(([id, fmt]) => {
+    const el = document.getElementById(id);
+    const out = document.getElementById('v-' + id);
+    el.addEventListener('input', () => {
+      out.textContent = fmt(el.value);
+      processImage();
+    });
+  });
+
+  document.getElementById('btnAnalyze').addEventListener('click', processImage);
+  document.getElementById('btnReset').addEventListener('click', () => {
+    if (!originalImage) return;
+    const pc = document.getElementById('processedCanvas');
+    pc.getContext('2d').drawImage(originalImage, 0, 0, pc.width, pc.height);
+    document.getElementById('verdict').className = 'verdict';
+    document.getElementById('verdict').textContent = 'Сброшено';
+    document.getElementById('protocol').textContent = '—';
+    chartHist.data.labels = []; chartHist.data.datasets[0].data = []; chartHist.update('none');
+    chartSizes.data.labels = []; chartSizes.data.datasets[0].data = []; chartSizes.update('none');
+  });
+});
+</script>
+</body>
+</html>
